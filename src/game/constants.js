@@ -1,0 +1,30 @@
+export const SCHEMA_VERSION = 1
+
+export const GAME_STATUS = Object.freeze({
+  TEAM: 'team',
+  REGISTRATION: 'registration',
+  READY: 'ready',
+  PLAYING: 'playing',
+})
+
+export const GAME_STATUS_VALUES = Object.freeze(Object.values(GAME_STATUS))
+
+export const ACTIONS = Object.freeze({
+  NEW_GAME: 'NEW_GAME',
+  RESET: 'RESET',
+  SET_TEAM_NAME: 'SET_TEAM_NAME',
+  ADD_PLAYER: 'ADD_PLAYER',
+  RENAME_PLAYER: 'RENAME_PLAYER',
+  REMOVE_PLAYER: 'REMOVE_PLAYER',
+  START_REGISTRATION: 'START_REGISTRATION',
+  SET_DRAFT_TEXT: 'SET_DRAFT_TEXT',
+  SET_DRAFT_CATEGORY: 'SET_DRAFT_CATEGORY',
+  ADD_DRAFT_ENTRY: 'ADD_DRAFT_ENTRY',
+  REMOVE_DRAFT_ENTRY: 'REMOVE_DRAFT_ENTRY',
+  CONFIRM_REGISTRATION: 'CONFIRM_REGISTRATION',
+  START_GAME: 'START_GAME',
+})
+
+export function isGameStatus(value) {
+  return GAME_STATUS_VALUES.includes(value)
+}

@@ -4,9 +4,12 @@ import '@fontsource-variable/inter'
 import '@fontsource-variable/space-grotesk'
 import './styles/index.css'
 import App from './App'
+import { GameProvider } from './game/GameProvider'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <GameProvider>
+      <App />
+    </GameProvider>
   </StrictMode>,
 )

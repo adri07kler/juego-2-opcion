@@ -2,16 +2,16 @@ import { useEffect } from 'react'
 import { ROUTES, ROUTE_TITLES } from './app/routes'
 import { AppShell } from './components/layout/AppShell'
 import { useScreenNavigation } from './hooks/useScreenNavigation'
+import { GamePage } from './pages/GamePage'
 import { HomePage } from './pages/HomePage'
 import { InstructionsPage } from './pages/InstructionsPage'
-import { NewGamePage } from './pages/NewGamePage'
 
 const GAME_TITLE = '¿Quién está detrás del dato?'
 
 const SCREENS = {
   [ROUTES.HOME]: HomePage,
   [ROUTES.INSTRUCTIONS]: InstructionsPage,
-  [ROUTES.NEW_GAME]: NewGamePage,
+  [ROUTES.GAME]: GamePage,
 }
 
 export default function App() {

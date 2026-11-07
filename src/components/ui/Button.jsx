@@ -9,6 +9,8 @@ const VARIANTS = {
   secondary:
     'border border-white/10 bg-white/[0.04] text-mist-100 hover:border-accent-400/40 hover:bg-white/[0.08]',
   ghost: 'text-mist-300 hover:bg-white/[0.06] hover:text-mist-100',
+  danger:
+    'border border-red-400/30 bg-red-500/10 text-red-200 hover:border-red-400/50 hover:bg-red-500/20',
 }
 
 const SIZES = {

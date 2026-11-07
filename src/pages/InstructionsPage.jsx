@@ -12,6 +12,7 @@ import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import { Screen } from '../components/ui/Screen'
 import { GAME_CONFIG } from '../config/gameConfig'
+import { useGame } from '../game/useGame'
 
 const { points, minPlayers, maxPlayers, dataPerPlayer } = GAME_CONFIG
 
@@ -24,7 +25,7 @@ const STEPS = [
   {
     icon: Fingerprint,
     title: 'Registro anónimo',
-    body: `Cada participante escribe ${dataPerPlayer.min} o ${dataPerPlayer.max} datos sobre sí mismo desde el mismo dispositivo. Nadie ve lo que escriben los demás y la app mezcla todo antes de empezar.`,
+    body: `Cada participante escribe ${dataPerPlayer.min} o ${dataPerPlayer.max} datos sobre sí mismo desde el mismo dispositivo. Entre una persona y la siguiente aparece una pantalla de transición para entregar el dispositivo sin mostrar nada. La app mezcla todo antes de empezar.`,
   },
   {
     icon: Vote,
@@ -59,6 +60,8 @@ function Stat({ value, label }) {
 }
 
 export function InstructionsPage({ navigate }) {
+  const { game } = useGame()
+
   return (
     <Screen
       width="narrow"
@@ -120,6 +123,20 @@ export function InstructionsPage({ navigate }) {
         </ul>
       </Card>
 
+      <Card className="mt-4 p-6 sm:p-8">
+        <h2 className="font-display text-lg font-semibold text-mist-100">
+          Privacidad
+        </h2>
+        <p className="mt-3 text-sm leading-relaxed text-mist-400">
+          La app oculta los datos y nunca muestra al autor en las pantallas de
+          registro ajenas. Todo se guarda en este navegador y no se envía a
+          ningún servidor. Es una privacidad <strong className="font-semibold text-mist-300">visual</strong>:
+          no hay cifrado frente a alguien con acceso al dispositivo que
+          inspeccione el almacenamiento local. El juego asume confianza entre
+          los participantes.
+        </p>
+      </Card>
+
       <div className="mt-10 flex flex-col items-center justify-between gap-5 rounded-3xl border border-accent-400/20 bg-accent-500/[0.07] p-6 text-center sm:flex-row sm:p-8 sm:text-left">
         <div>
           <p className="font-display text-lg font-semibold text-mist-100">
@@ -131,10 +148,10 @@ export function InstructionsPage({ navigate }) {
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
           <Button
-            onClick={() => navigate(ROUTES.NEW_GAME)}
+            onClick={() => navigate(ROUTES.GAME)}
             className="w-full sm:w-auto"
           >
-            Nueva partida
+            {game ? 'Continuar partida' : 'Crear partida'}
             <ArrowRight
               className="size-4 transition-transform duration-200 group-hover:translate-x-1"
               aria-hidden="true"
