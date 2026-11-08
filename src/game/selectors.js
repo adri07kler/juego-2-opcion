@@ -158,9 +158,11 @@ export function getGroupAnswerPlayer(game, round) {
 
 export function getScoreForPlayer(game, playerId) {
   const score = game?.scores?.[playerId]
+  const streak = score?.streak ?? 0
   return {
     points: score?.points ?? 0,
-    streak: score?.streak ?? 0,
+    streak,
+    bestStreak: Math.max(score?.bestStreak ?? 0, streak),
     correct: score?.correct ?? 0,
     wrong: score?.wrong ?? 0,
   }
@@ -193,6 +195,74 @@ export function getRanking(game) {
     ...row,
     tied: ranked.filter((other) => other.rank === row.rank).length > 1,
   }))
+}
+
+/**
+ * Rondas ya reveladas junto con su dato y autor. El resumen final solo
+ * muestra información que el equipo ya vio durante la partida.
+ */
+export function getRevealedRounds(game) {
+  return (game?.rounds ?? [])
+    .filter((round) => Boolean(round?.result))
+    .map((round) => {
+      const datum = getDatumById(game, round.dataId)
+      return {
+        round,
+        datum,
+        author: datum ? getPlayerById(game, datum.authorId) : null,
+      }
+    })
+}
+
+export function getGameSummary(game) {
+  const revealed = getRevealedRounds(game)
+  const players = game?.players ?? []
+
+  const correctPredictions = revealed.reduce(
+    (total, { round }) => total + (round.result.correctCount ?? 0),
+    0,
+  )
+  const wrongPredictions = revealed.reduce(
+    (total, { round }) => total + (round.result.wrongCount ?? 0),
+    0,
+  )
+  const totalPredictions = correctPredictions + wrongPredictions
+  const correctGroupAnswers = revealed.filter(
+    ({ round }) => round.result.groupCorrect,
+  ).length
+  const bestStreak = players.reduce(
+    (best, player) =>
+      Math.max(best, getScoreForPlayer(game, player.id).bestStreak),
+    0,
+  )
+
+  return {
+    teamName: game?.teamName ?? '',
+    roundsCompleted: revealed.length,
+    totalRounds: game?.rounds?.length ?? 0,
+    totalData: game?.data?.length ?? 0,
+    correctPredictions,
+    wrongPredictions,
+    totalPredictions,
+    individualAccuracy:
+      totalPredictions > 0
+        ? Math.round((correctPredictions / totalPredictions) * 100)
+        : 0,
+    correctGroupAnswers,
+    groupAccuracy:
+      revealed.length > 0
+        ? Math.round((correctGroupAnswers / revealed.length) * 100)
+        : 0,
+    bestStreak,
+    revealedData: revealed.map(({ round, datum, author }) => ({
+      dataId: round.dataId,
+      text: datum?.text ?? '',
+      category: datum?.category ?? '',
+      authorId: author?.id ?? null,
+      authorName: author?.name ?? 'Autor desconocido',
+      groupCorrect: Boolean(round.result.groupCorrect),
+    })),
+  }
 }
 
 export function getGameStatusLabel(game) {

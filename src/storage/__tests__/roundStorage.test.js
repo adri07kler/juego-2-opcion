@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ACTIONS, GAME_STATUS, ROUND_PHASE } from '../../game/constants'
+import {
+  ACTIONS,
+  GAME_STATUS,
+  ROUND_PHASE,
+  SCHEMA_VERSION,
+} from '../../game/constants'
 import { createGame } from '../../game/factory'
 import { gameReducer } from '../../game/reducer'
 import { STORAGE_KEY, loadGame, normalizeGame, saveGame } from '../gameStorage'
@@ -56,6 +61,42 @@ function playingGame() {
     deck: game.data.map((datum) => datum.id),
     now: NOW,
   })
+  return game
+}
+
+function playCurrentRound(game, { correct = true } = {}) {
+  const round = game.rounds[game.currentRoundIndex]
+  const authorId = game.data.find((datum) => datum.id === round.dataId)
+    .authorId
+  const wrongTarget = game.players.find(
+    (player) => player.id !== authorId,
+  ).id
+  const target = correct ? authorId : wrongTarget
+
+  let next = gameReducer(game, {
+    type: ACTIONS.BEGIN_PREDICTIONS,
+    now: NOW,
+  })
+  next.players.forEach(() => {
+    next = gameReducer(next, {
+      type: ACTIONS.SUBMIT_PREDICTION,
+      predictedAuthorId: target,
+      now: NOW,
+    })
+  })
+  next = gameReducer(next, {
+    type: ACTIONS.CONFIRM_GROUP_PREDICTION,
+    predictedAuthorId: target,
+    now: NOW,
+  })
+  return gameReducer(next, { type: ACTIONS.ADVANCE_ROUND, now: NOW })
+}
+
+function finishedGame() {
+  let game = playingGame()
+  for (let index = 0; index < game.rounds.length; index += 1) {
+    game = playCurrentRound(game)
+  }
   return game
 }
 
@@ -119,8 +160,8 @@ describe('persistencia del motor de rondas', () => {
       normalized.rounds.every((round) => round.phase === ROUND_PHASE.MYSTERY),
     ).toBe(true)
     expect(normalized.scores).toEqual({
-      p1: { points: 0, streak: 0, correct: 0, wrong: 0 },
-      p2: { points: 0, streak: 0, correct: 0, wrong: 0 },
+      p1: { points: 0, streak: 0, bestStreak: 0, correct: 0, wrong: 0 },
+      p2: { points: 0, streak: 0, bestStreak: 0, correct: 0, wrong: 0 },
     })
   })
 
@@ -166,5 +207,175 @@ describe('persistencia del motor de rondas', () => {
     saveGame(game, storage)
     expect(storage.getItem(STORAGE_KEY)).toBeTruthy()
     expect(loadGame(storage).issue).toBeNull()
+  })
+
+  it('no duplica puntos al guardar y recargar varias veces una partida finalizada', () => {
+    const finished = finishedGame()
+    expect(finished.status).toBe(GAME_STATUS.FINISHED)
+    expect(finished.scores).toEqual({
+      p1: { points: 45, streak: 4, bestStreak: 4, correct: 4, wrong: 0 },
+      p2: { points: 45, streak: 4, bestStreak: 4, correct: 4, wrong: 0 },
+    })
+
+    const storage = createMemoryStorage()
+    saveGame(finished, storage)
+
+    const firstLoad = loadGame(storage)
+    expect(firstLoad.issue).toBeNull()
+    expect(firstLoad.game.scores).toEqual(finished.scores)
+    expect(firstLoad.game.rounds.map((round) => round.dataId)).toEqual(
+      finished.rounds.map((round) => round.dataId),
+    )
+
+    saveGame(firstLoad.game, storage)
+    const secondLoad = loadGame(storage)
+    expect(secondLoad.game.scores).toEqual(finished.scores)
+    expect(secondLoad.game.rounds).toHaveLength(finished.rounds.length)
+    expect(
+      new Set(secondLoad.game.rounds.map((round) => round.dataId)).size,
+    ).toBe(finished.rounds.length)
+  })
+
+  it('recalcula las puntuaciones desde las rondas y descarta totales manipulados', () => {
+    const finished = finishedGame()
+    const tampered = {
+      ...finished,
+      scores: {
+        ...finished.scores,
+        p1: {
+          points: 9999,
+          streak: 4,
+          bestStreak: 99,
+          correct: 99,
+          wrong: 0,
+        },
+      },
+    }
+    const storage = createMemoryStorage()
+    saveGame(tampered, storage)
+
+    const { game } = loadGame(storage)
+    expect(game.scores).toEqual(finished.scores)
+    expect(game.scores.p1.points).toBe(45)
+    expect(game.scores.p1.bestStreak).toBe(4)
+  })
+
+  it('regenera los resultados individuales guardados en vez de confiar en ellos', () => {
+    const finished = finishedGame()
+    const tampered = {
+      ...finished,
+      rounds: finished.rounds.map((round, index) =>
+        index === 0
+          ? {
+              ...round,
+              result: {
+                ...round.result,
+                playerResults: [],
+                correctCount: 99,
+                wrongCount: 99,
+                groupCorrect: false,
+              },
+            }
+          : round,
+      ),
+    }
+
+    const normalized = normalizeGame(tampered)
+    expect(normalized.rounds[0].result.playerResults).toHaveLength(2)
+    expect(normalized.rounds[0].result.correctCount).toBe(2)
+    expect(normalized.rounds[0].result.wrongCount).toBe(0)
+    expect(normalized.rounds[0].result.groupCorrect).toBe(true)
+    expect(normalized.scores).toEqual(finished.scores)
+  })
+
+  it('elimina rondas duplicadas al recuperar una partida', () => {
+    const finished = finishedGame()
+    const duplicated = {
+      ...finished,
+      rounds: [...finished.rounds, finished.rounds[0]],
+    }
+
+    const normalized = normalizeGame(duplicated)
+    expect(normalized.rounds).toHaveLength(finished.rounds.length)
+    expect(
+      new Set(normalized.rounds.map((round) => round.dataId)).size,
+    ).toBe(finished.rounds.length)
+    expect(normalized.scores).toEqual(finished.scores)
+  })
+
+  it('descarta una revelación cuyo autor no coincide con el dato', () => {
+    const playing = playingGame()
+    const round = playing.rounds[0]
+    const datum = playing.data.find((item) => item.id === round.dataId)
+    const wrongAuthorId = playing.players.find(
+      (player) => player.id !== datum.authorId,
+    ).id
+    const tampered = {
+      ...playing,
+      rounds: playing.rounds.map((item, index) =>
+        index === 0
+          ? {
+              ...item,
+              phase: ROUND_PHASE.REVEAL,
+              predictions: playing.players.map((player) => ({
+                playerId: player.id,
+                predictedAuthorId: wrongAuthorId,
+                createdAt: NOW,
+              })),
+              groupPrediction: {
+                predictedAuthorId: wrongAuthorId,
+                confirmedAt: NOW,
+              },
+              result: {
+                authorId: wrongAuthorId,
+                revealedAt: NOW,
+                playerResults: [],
+                correctCount: 2,
+                wrongCount: 0,
+                groupCorrect: true,
+              },
+            }
+          : item,
+      ),
+    }
+
+    const normalized = normalizeGame(tampered)
+    expect(normalized.rounds[0].result).toBeNull()
+    expect(normalized.rounds[0].phase).toBe(ROUND_PHASE.GROUP)
+    expect(normalized.scores.p1.points).toBe(0)
+  })
+
+  it('migra una partida de esquema 1 y reconstruye la mejor racha', () => {
+    const finished = finishedGame()
+    const legacyScores = Object.fromEntries(
+      Object.entries(finished.scores).map(([playerId, score]) => [
+        playerId,
+        {
+          points: score.points,
+          streak: score.streak,
+          correct: score.correct,
+          wrong: score.wrong,
+        },
+      ]),
+    )
+    const legacyGame = {
+      ...finished,
+      schemaVersion: 1,
+      scores: legacyScores,
+    }
+
+    const storage = createMemoryStorage({
+      [STORAGE_KEY]: JSON.stringify({
+        schemaVersion: 1,
+        savedAt: NOW,
+        game: legacyGame,
+      }),
+    })
+
+    const loaded = loadGame(storage)
+    expect(loaded.issue).toBeNull()
+    expect(loaded.game.schemaVersion).toBe(SCHEMA_VERSION)
+    expect(loaded.game.scores).toEqual(finished.scores)
+    expect(loaded.game.scores.p1.bestStreak).toBe(4)
   })
 })

@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { ACTIONS, GAME_STATUS, ROUND_PHASE } from '../constants'
-import { createGame } from '../factory'
+import { createGame, createRematchGame } from '../factory'
 import { gameReducer } from '../reducer'
 import {
+  getGameSummary,
   getPredictionTurn,
   getRanking,
   getRoundAuthor,
@@ -140,9 +141,9 @@ describe('motor de rondas · preparación', () => {
     expect(round.result).toBeNull()
     expect(round).not.toHaveProperty('authorId')
     expect(game.scores).toEqual({
-      p1: { points: 0, streak: 0, correct: 0, wrong: 0 },
-      p2: { points: 0, streak: 0, correct: 0, wrong: 0 },
-      p3: { points: 0, streak: 0, correct: 0, wrong: 0 },
+      p1: { points: 0, streak: 0, bestStreak: 0, correct: 0, wrong: 0 },
+      p2: { points: 0, streak: 0, bestStreak: 0, correct: 0, wrong: 0 },
+      p3: { points: 0, streak: 0, bestStreak: 0, correct: 0, wrong: 0 },
     })
   })
 
@@ -415,12 +416,14 @@ describe('motor de rondas · predicciones y revelación', () => {
     expect(game.scores.p1).toEqual({
       points: 10,
       streak: 1,
+      bestStreak: 1,
       correct: 1,
       wrong: 0,
     })
     expect(game.scores.p2).toEqual({
       points: 0,
       streak: 0,
+      bestStreak: 0,
       correct: 0,
       wrong: 1,
     })
@@ -460,8 +463,27 @@ describe('motor de rondas · avance y clasificación', () => {
     const ranking = getRanking(game)
     expect(ranking).toHaveLength(3)
     expect(ranking.every((row) => row.points === 80)).toBe(true)
+    expect(ranking.every((row) => row.bestStreak === totalRounds)).toBe(true)
     expect(ranking.every((row) => row.rank === 1)).toBe(true)
     expect(ranking.every((row) => row.tied)).toBe(true)
+
+    const summary = getGameSummary(game)
+    expect(summary).toMatchObject({
+      teamName: 'Equipo de prueba',
+      roundsCompleted: totalRounds,
+      totalRounds,
+      totalData: totalRounds,
+      correctGroupAnswers: totalRounds,
+      individualAccuracy: 100,
+      groupAccuracy: 100,
+      bestStreak: totalRounds,
+    })
+    expect(summary.revealedData).toHaveLength(totalRounds)
+    expect(
+      summary.revealedData.every(
+        (item) => Boolean(item.text) && Boolean(item.authorName),
+      ),
+    ).toBe(true)
   })
 
   it('ordena por puntos y comparte puesto cuando hay empate', () => {
@@ -500,5 +522,34 @@ describe('motor de rondas · avance y clasificación', () => {
         now: NOW,
       }),
     ).toBe(secondRound)
+  })
+})
+
+describe('motor de rondas · jugar otra vez', () => {
+  it('conserva equipo y participantes, pero limpia datos, rondas y puntos', () => {
+    let game = startPlaying(readyGame())
+    game = playCurrentRound(game)
+
+    const rematch = createRematchGame(game, {
+      id: 'g_rematch',
+      now: at(120),
+    })
+
+    expect(rematch.id).toBe('g_rematch')
+    expect(rematch.teamName).toBe(game.teamName)
+    expect(rematch.players).toEqual(game.players)
+    expect(rematch.status).toBe(GAME_STATUS.REGISTRATION)
+    expect(rematch.data).toEqual([])
+    expect(rematch.deck).toEqual([])
+    expect(rematch.rounds).toEqual([])
+    expect(rematch.scores).toEqual({})
+    expect(rematch.currentRoundIndex).toBe(0)
+    expect(rematch.startedAt).toBeNull()
+    expect(rematch.finishedAt).toBeNull()
+    expect(rematch.registration.draftPlayerId).toBe('p1')
+    expect(rematch.registration.entries).toHaveLength(2)
+    expect(
+      rematch.registration.entries.every((entry) => entry.text === ''),
+    ).toBe(true)
   })
 })

@@ -4,6 +4,7 @@ import {
   ROUND_PHASE,
   SCHEMA_VERSION,
 } from './constants'
+import { createPlayerScore } from './scoring'
 
 export function createGame({ id, now }) {
   return {
@@ -65,9 +66,30 @@ export function createRounds(deck, options = {}) {
 
 export function createScoreboard(players) {
   return Object.fromEntries(
-    players.map((player) => [
-      player.id,
-      { points: 0, streak: 0, correct: 0, wrong: 0 },
-    ]),
+    players.map((player) => [player.id, createPlayerScore()]),
   )
+}
+
+/**
+ * Nueva partida con el mismo equipo y los mismos participantes, pero sin
+ * datos, rondas ni puntuaciones anteriores. Vuelve al registro privado
+ * para que cada persona escriba datos nuevos.
+ */
+export function createRematchGame(game, { id, now }) {
+  const players = (game?.players ?? []).map((player) => ({ ...player }))
+  const registration =
+    players.length > 0
+      ? createEmptyDraft(players[0].id)
+      : { draftPlayerId: null, entries: [] }
+
+  return {
+    ...createGame({ id, now }),
+    status:
+      players.length >= GAME_CONFIG.minPlayers
+        ? GAME_STATUS.REGISTRATION
+        : GAME_STATUS.TEAM,
+    teamName: game?.teamName ?? '',
+    players,
+    registration,
+  }
 }

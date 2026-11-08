@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useReducer, useState } from 'react'
 import { useAutosave } from '../hooks/useAutosave'
-import { loadGame } from '../storage/gameStorage'
+import { clearStoredGame, loadGame } from '../storage/gameStorage'
 import { createId, nowIso } from '../utils/ids'
 import { ACTIONS } from './constants'
 import { GameContext } from './GameContext'
-import { createGame } from './factory'
+import { createGame, createRematchGame } from './factory'
 import { gameReducer } from './reducer'
 import { getRegistrationDraft } from './selectors'
 import { buildDeck } from './shuffle'
@@ -29,6 +29,26 @@ export function GameProvider({ children }) {
           type: ACTIONS.NEW_GAME,
           game: createGame({ id: createId('partida'), now: nowIso() }),
         })
+      },
+
+      /**
+       * Conserva equipo y participantes, pero crea una partida limpia:
+       * sin datos, rondas, predicciones ni puntuaciones anteriores.
+       */
+      playAgain() {
+        if (!game) return
+        run({
+          type: ACTIONS.NEW_GAME,
+          game: createRematchGame(game, {
+            id: createId('partida'),
+            now: nowIso(),
+          }),
+        })
+      },
+
+      deleteGame() {
+        clearStoredGame()
+        dispatch({ type: ACTIONS.RESET })
       },
 
       resetGame() {

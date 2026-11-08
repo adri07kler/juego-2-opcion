@@ -1,15 +1,21 @@
 import { GAME_CONFIG } from '../config/gameConfig'
 
 export function createPlayerScore() {
-  return { points: 0, streak: 0, correct: 0, wrong: 0 }
+  return { points: 0, streak: 0, bestStreak: 0, correct: 0, wrong: 0 }
+}
+
+function toCount(value) {
+  return Number.isFinite(value) && value > 0 ? value : 0
 }
 
 function normalizeScore(score) {
+  const streak = toCount(score?.streak)
   return {
-    points: Number.isFinite(score?.points) ? score.points : 0,
-    streak: Number.isFinite(score?.streak) ? score.streak : 0,
-    correct: Number.isFinite(score?.correct) ? score.correct : 0,
-    wrong: Number.isFinite(score?.wrong) ? score.wrong : 0,
+    points: toCount(score?.points),
+    streak,
+    bestStreak: Math.max(streak, toCount(score?.bestStreak)),
+    correct: toCount(score?.correct),
+    wrong: toCount(score?.wrong),
   }
 }
 
@@ -40,6 +46,7 @@ export function applyPredictionScore(
     return {
       points: current.points,
       streak: 0,
+      bestStreak: current.bestStreak,
       correct: current.correct,
       wrong: current.wrong + 1,
     }
@@ -52,6 +59,7 @@ export function applyPredictionScore(
   return {
     points: current.points + points.correct + bonusAwarded,
     streak,
+    bestStreak: Math.max(current.bestStreak, streak),
     correct: current.correct + 1,
     wrong: current.wrong,
   }
@@ -88,4 +96,62 @@ export function scoreRound({
   })
 
   return { scores: nextScores, playerResults }
+}
+
+/**
+ * Reconstruye la puntuación a partir de las rondas ya reveladas. Al
+ * cargar una partida no se confía en los totales guardados: se recalculan
+ * una sola vez y se regeneran los resultados individuales. Así una recarga
+ * nunca duplica puntos ni conserva totales manipulados.
+ */
+export function rebuildScoresFromRounds(
+  players,
+  rounds,
+  points = GAME_CONFIG.points,
+) {
+  let scores = ensureScoreboard(players, null)
+
+  const nextRounds = (rounds ?? []).map((round) => {
+    const result = round?.result
+    if (!result) return round
+
+    const predictions = Array.isArray(round.predictions)
+      ? round.predictions
+      : []
+    const complete =
+      players.length > 0 &&
+      predictions.length === players.length &&
+      players.every((player) =>
+        predictions.some(
+          (prediction) => prediction.playerId === player.id,
+        ),
+      )
+
+    if (!complete) {
+      return { ...round, result: null, groupPrediction: null }
+    }
+
+    const { scores: roundScores, playerResults } = scoreRound({
+      predictions,
+      scores,
+      authorId: result.authorId,
+      points,
+    })
+    scores = roundScores
+
+    const correctCount = playerResults.filter((entry) => entry.correct).length
+    return {
+      ...round,
+      result: {
+        ...result,
+        playerResults,
+        correctCount,
+        wrongCount: playerResults.length - correctCount,
+        groupCorrect:
+          round.groupPrediction?.predictedAuthorId === result.authorId,
+      },
+    }
+  })
+
+  return { scores: ensureScoreboard(players, scores), rounds: nextRounds }
 }

@@ -8,9 +8,11 @@ import {
 } from '../game/constants'
 import { createDraftEntries, createRound } from '../game/factory'
 import { isValidTimerDuration } from '../game/rounds'
-import { ensureScoreboard } from '../game/scoring'
+import { rebuildScoresFromRounds } from '../game/scoring'
 import { getCurrentRegistrationPlayer } from '../game/selectors'
 import { isValidDeck } from '../game/validation'
+
+const LEGACY_SCHEMA_VERSION = 1
 
 export const STORAGE_KEY = 'quien-detras-del-dato/game'
 export const BACKUP_KEY = `${STORAGE_KEY}/backup`
@@ -140,7 +142,7 @@ function normalizeTimer(timer, fallbackDuration) {
   }
 }
 
-function normalizeRound(round, players, fallbackDuration) {
+function normalizeRound(round, players, fallbackDuration, authorId) {
   if (!isPlainObject(round) || typeof round.dataId !== 'string') return null
 
   const playerIds = new Set(players.map((player) => player.id))
@@ -174,16 +176,6 @@ function normalizeRound(round, players, fallbackDuration) {
     predictions.length === players.length &&
     players.every((player) => seenPlayers.has(player.id))
 
-  let result = isPlainObject(round.result) ? round.result : null
-  if (
-    result &&
-    (!complete ||
-      !playerIds.has(result.authorId) ||
-      !Array.isArray(result.playerResults))
-  ) {
-    result = null
-  }
-
   let groupPrediction = null
   if (
     isPlainObject(round.groupPrediction) &&
@@ -196,6 +188,17 @@ function normalizeRound(round, players, fallbackDuration) {
           ? round.groupPrediction.confirmedAt
           : null,
     }
+  }
+
+  let result = isPlainObject(round.result) ? round.result : null
+  if (
+    result &&
+    (!complete ||
+      !playerIds.has(result.authorId) ||
+      result.authorId !== authorId ||
+      !groupPrediction)
+  ) {
+    result = null
   }
   if (!result) groupPrediction = null
 
@@ -229,7 +232,8 @@ function normalizeRound(round, players, fallbackDuration) {
 
 function normalizePlayState(game) {
   const players = game.players
-  const dataIds = new Set(game.data.map((datum) => datum.id))
+  const dataById = new Map(game.data.map((datum) => [datum.id, datum]))
+  const dataIds = new Set(dataById.keys())
   const rawRounds = Array.isArray(game.rounds) ? game.rounds : []
 
   let deck = Array.isArray(game.deck)
@@ -258,11 +262,12 @@ function normalizePlayState(game) {
       round,
       players,
       GAME_CONFIG.roundTimer.default,
+      dataById.get(round.dataId)?.authorId,
     )
     if (normalized) roundsById.set(round.dataId, normalized)
   })
 
-  const rounds = deck.map(
+  const baseRounds = deck.map(
     (dataId) =>
       roundsById.get(dataId) ??
       createRound(dataId, {
@@ -270,8 +275,8 @@ function normalizePlayState(game) {
         durationSeconds: GAME_CONFIG.roundTimer.default,
       }),
   )
+  const { scores, rounds } = rebuildScoresFromRounds(players, baseRounds)
 
-  const scores = ensureScoreboard(players, game.scores)
   let status = game.status
   let currentRoundIndex = Number.isInteger(game.currentRoundIndex)
     ? clamp(game.currentRoundIndex, 0, Math.max(0, rounds.length - 1))
@@ -305,6 +310,24 @@ function normalizePlayState(game) {
   }
 }
 
+/**
+ * Actualiza el esquema de una partida guardada. Solo se aceptan versiones
+ * conocidas; el resto se trata como contenido corrupto. La normalización
+ * posterior reconstruye puntuaciones y resultados con el formato actual.
+ */
+function migrateGame(game, schemaVersion) {
+  if (!isPlainObject(game)) return null
+  if (game.schemaVersion !== schemaVersion) return null
+
+  if (schemaVersion === LEGACY_SCHEMA_VERSION) {
+    return { ...game, schemaVersion: SCHEMA_VERSION }
+  }
+  if (schemaVersion === SCHEMA_VERSION) {
+    return game
+  }
+  return null
+}
+
 export function saveGame(game, storage = getDefaultStorage()) {
   if (!storage) return { ok: false, issue: 'unavailable' }
   try {
@@ -314,11 +337,7 @@ export function saveGame(game, storage = getDefaultStorage()) {
     }
     storage.setItem(
       STORAGE_KEY,
-      JSON.stringify({
-        schemaVersion: SCHEMA_VERSION,
-        savedAt: new Date().toISOString(),
-        game,
-      }),
+      JSON.stringify({ schemaVersion: SCHEMA_VERSION, game }),
     )
     storage.removeItem(BACKUP_KEY)
     return { ok: true }
@@ -341,14 +360,13 @@ export function loadGame(storage = getDefaultStorage()) {
 
   try {
     const parsed = JSON.parse(raw)
-    if (
-      !isPlainObject(parsed) ||
-      parsed.schemaVersion !== SCHEMA_VERSION ||
-      !isGameShape(parsed.game)
-    ) {
+    if (!isPlainObject(parsed)) throw new Error('invalid-game')
+
+    const migrated = migrateGame(parsed.game, parsed.schemaVersion)
+    if (!migrated || !isGameShape(migrated)) {
       throw new Error('invalid-game')
     }
-    return { game: normalizeGame(parsed.game), issue: null }
+    return { game: normalizeGame(migrated), issue: null }
   } catch {
     try {
       storage.setItem(BACKUP_KEY, raw)

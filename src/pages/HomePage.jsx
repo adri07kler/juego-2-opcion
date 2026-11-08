@@ -7,6 +7,7 @@ import {
   Play,
   Smartphone,
   Sparkles,
+  Trash2,
   Trophy,
   Users,
 } from 'lucide-react'
@@ -78,7 +79,7 @@ function StorageNotice({ issue, onDismiss }) {
   )
 }
 
-function CurrentGameCard({ game, onContinue, onNewGame }) {
+function CurrentGameCard({ game, onContinue, onNewGame, onDelete }) {
   const status = getGameStatusLabel(game)
   const progress =
     game.status === GAME_STATUS.REGISTRATION
@@ -149,7 +150,9 @@ function CurrentGameCard({ game, onContinue, onNewGame }) {
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
           <Button onClick={onContinue} className="w-full sm:w-auto">
             <Play className="size-4" aria-hidden="true" />
-            Continuar partida
+            {game.status === GAME_STATUS.FINISHED
+              ? 'Ver resultados'
+              : 'Continuar partida'}
           </Button>
           <Button
             variant="ghost"
@@ -158,6 +161,14 @@ function CurrentGameCard({ game, onContinue, onNewGame }) {
           >
             Nueva partida
           </Button>
+          <Button
+            variant="ghost"
+            onClick={onDelete}
+            className="w-full text-red-200/80 hover:bg-red-500/10 hover:text-red-200 sm:w-auto"
+          >
+            <Trash2 className="size-4" aria-hidden="true" />
+            Eliminar
+          </Button>
         </div>
       </div>
     </Card>
@@ -165,8 +176,15 @@ function CurrentGameCard({ game, onContinue, onNewGame }) {
 }
 
 export function HomePage({ navigate }) {
-  const { game, storageIssue, dismissStorageIssue, startNewGame } = useGame()
+  const {
+    game,
+    storageIssue,
+    dismissStorageIssue,
+    startNewGame,
+    deleteGame,
+  } = useGame()
   const [confirmNewGame, setConfirmNewGame] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   function handleNewGame() {
     if (game) {
@@ -231,6 +249,7 @@ export function HomePage({ navigate }) {
           game={game}
           onContinue={() => navigate(ROUTES.GAME)}
           onNewGame={() => setConfirmNewGame(true)}
+          onDelete={() => setConfirmDelete(true)}
         />
       ) : null}
 
@@ -279,6 +298,19 @@ export function HomePage({ navigate }) {
         tone="danger"
         onConfirm={confirmReset}
         onCancel={() => setConfirmNewGame(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="¿Eliminar la partida guardada?"
+        description="Se borrarán el equipo, los datos, las predicciones y la clasificación de este dispositivo. Esta acción no se puede deshacer."
+        confirmLabel="Eliminar partida"
+        tone="danger"
+        onConfirm={() => {
+          setConfirmDelete(false)
+          deleteGame()
+        }}
+        onCancel={() => setConfirmDelete(false)}
       />
     </Screen>
   )

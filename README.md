@@ -4,7 +4,7 @@ Juego de integración para equipos. Cada participante registra datos curiosos so
 
 ## Estado del proyecto
 
-**Fase 3 completada: motor de rondas, votación y clasificación final.**
+**Fase 4 completada: resultados finales, resumen de partida y persistencia versionada.**
 
 Incluye:
 
@@ -19,10 +19,12 @@ Incluye:
 - **Predicciones privadas secuenciales:** cada participante vota en su turno sin ver el dato, los votos anteriores ni al autor. La predicción queda bloqueada al confirmar.
 - **Respuesta grupal:** tras completar todos los votos, el equipo discute y confirma una única respuesta con diálogo de confirmación.
 - **Revelación:** autor real, dato original, respuesta del equipo, resultado de cada predicción y aviso para que el autor cuente su historia.
-- **Puntuación:** +10 por acierto individual, +5 extra en cada tercer acierto consecutivo y racha a cero tras un fallo.
-- **Clasificación final:** orden por puntos, empates con el mismo puesto y opción de empezar una partida nueva.
-- **Persistencia:** guardado automático en LocalStorage, recuperación tras recargar (incluido el temporizador en marcha) y reparación de estados dañados o de versiones anteriores.
-- Tests unitarios del dominio, del motor de rondas, de la puntuación y de la persistencia con Vitest.
+- **Puntuación:** +10 por acierto individual, +5 extra en cada tercer acierto consecutivo, racha a cero tras un fallo y mejor racha acumulada por persona.
+- **Clasificación final:** nombre del equipo, jugador o jugadores con mayor puntuación, tabla de posiciones, puntos, aciertos, fallos y mejor racha. Quienes empatan comparten puesto sin criterios de desempate inventados.
+- **Resumen de la partida:** rondas completadas, datos utilizados, porcentaje de aciertos individuales, respuestas grupales correctas y todos los datos y autores revelados.
+- **Opciones finales:** jugar otra vez con el mismo equipo, volver al inicio, consultar el resumen y eliminar la partida con confirmación. «Jugar otra vez» crea una partida limpia: conserva equipo y participantes, pero no reutiliza datos, rondas ni puntuaciones.
+- **Persistencia:** guardado automático en LocalStorage, recuperación tras recargar (incluido el temporizador en marcha), reconstrucción de puntuaciones desde las rondas reveladas para no duplicar puntos, migración desde el esquema anterior y reparación controlada de estados dañados.
+- Tests unitarios del dominio, del motor de rondas, de la puntuación, del resumen, del reinicio y de la persistencia con Vitest.
 
 ## Flujo
 
@@ -38,6 +40,7 @@ Incluye:
 6. **Respuesta del equipo** (`#partida`): con todos los votos cerrados, el grupo discute y confirma una única respuesta.
 7. **Revelación** (`#partida`): se muestran el autor, el dato, la respuesta grupal, los aciertos y fallos individuales y la puntuación acumulada.
 8. **Siguiente ronda o final** (`#partida`): se avanza al siguiente dato o, tras el último, se muestra la clasificación final (`#partida`).
+9. **Resultados** (`#partida`): clasificación con mejor racha, estadísticas generales y acceso al resumen completo. Desde ahí se puede jugar otra vez, volver al inicio o eliminar la partida con confirmación.
 
 Al recargar durante el registro siempre aparece primero la pantalla neutral: el borrador se conserva, pero no se muestra hasta que la persona correcta confirma su turno. Lo mismo ocurre con cada predicción privada: la selección local se descarta y hay que pasar de nuevo por la pantalla de entrega.
 
@@ -132,12 +135,15 @@ El autor de cada dato lo asigna siempre el reducer a partir del turno de registr
 ## Almacenamiento
 
 - Clave principal: `quien-detras-del-dato/game`.
-- Esquema: `1`.
+- Esquema actual: `2`; se migran partidas del esquema `1`.
 - Respaldo ante contenido dañado: `quien-detras-del-dato/game/backup`.
 - Autoguardado con retardo de 250 ms y guardado forzado al cerrar o recargar la página.
+- El sobre guardado solo contiene `schemaVersion` y `game`; no se guarda información de interfaz ni marcas de tiempo que no se usen.
 - El temporizador guarda `durationSeconds`, `remainingSeconds`, `endsAt` y `running`; al recargar se descuenta el tiempo real transcurrido.
 - Al cargar, se corrigen borradores que no pertenecen al turno actual y se promueve a `ready` si ya no queda nadie por registrar.
-- También se reconstruyen rondas y puntuaciones ausentes de partidas guardadas por versiones anteriores, se reparan temporizadores y votos inválidos y se degrada a `playing` una partida marcada como finalizada si sus rondas no están completas.
+- Las puntuaciones se reconstruyen desde las rondas reveladas en lugar de confiar en los totales guardados. Así una recarga no duplica puntos y los totales manipulados o incompletos se corrigen.
+- También se reconstruyen rondas y puntuaciones ausentes de partidas guardadas por versiones anteriores, se eliminan rondas duplicadas, se reparan temporizadores y votos inválidos y se degrada a `playing` una partida marcada como finalizada si sus rondas no están completas.
+- La eliminación de una partida borra la clave principal y el respaldo de forma controlada.
 
 ## Reglas resumidas
 
