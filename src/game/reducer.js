@@ -1,10 +1,23 @@
 import { GAME_CONFIG } from '../config/gameConfig'
-import { ACTIONS, GAME_STATUS } from './constants'
-import { createEmptyDraft } from './factory'
+import { ACTIONS, GAME_STATUS, ROUND_PHASE } from './constants'
 import {
+  createEmptyDraft,
+  createRounds,
+  createScoreboard,
+} from './factory'
+import {
+  arePredictionsComplete,
   getAllRegistered,
   getCurrentRegistrationPlayer,
+  getPredictionTurn,
 } from './selectors'
+import {
+  isValidTimerDuration,
+  pauseRoundTimer,
+  startRoundTimer,
+  tickRoundTimer,
+} from './rounds'
+import { scoreRound } from './scoring'
 import {
   isValidCategory,
   isValidDeck,
@@ -41,6 +54,17 @@ function draftPatch(state, entries) {
   return {
     registration: { ...state.registration, entries },
   }
+}
+
+function getActiveRound(state) {
+  return state.rounds?.[state.currentRoundIndex] ?? null
+}
+
+function withActiveRound(state, now, round, patch, extra = {}) {
+  const rounds = state.rounds.map((candidate, index) =>
+    index === state.currentRoundIndex ? { ...round, ...patch } : candidate,
+  )
+  return committed(state, now, { rounds, ...extra })
 }
 
 export function gameReducer(state, action) {
@@ -241,9 +265,164 @@ export function gameReducer(state, action) {
       return committed(state, action.now, {
         status: GAME_STATUS.PLAYING,
         deck: action.deck,
-        rounds: [],
+        rounds: createRounds(action.deck, { now: action.now }),
+        scores: createScoreboard(state.players),
         currentRoundIndex: 0,
         startedAt: action.now,
+        finishedAt: null,
+      })
+    }
+
+    case ACTIONS.SET_ROUND_TIMER_DURATION: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+      const round = getActiveRound(state)
+      if (!round || round.phase !== ROUND_PHASE.MYSTERY) return state
+      if (round.timer.running) return state
+      if (!isValidTimerDuration(action.seconds)) return state
+
+      return withActiveRound(state, action.now, round, {
+        timer: {
+          ...round.timer,
+          durationSeconds: action.seconds,
+          remainingSeconds: action.seconds,
+          endsAt: null,
+          running: false,
+        },
+      })
+    }
+
+    case ACTIONS.START_ROUND_TIMER: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+      const round = getActiveRound(state)
+      if (!round || round.phase !== ROUND_PHASE.MYSTERY) return state
+
+      const timer = startRoundTimer(round.timer, action.now)
+      if (timer === round.timer) return state
+      return withActiveRound(state, action.now, round, { timer })
+    }
+
+    case ACTIONS.PAUSE_ROUND_TIMER: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+      const round = getActiveRound(state)
+      if (!round || round.phase !== ROUND_PHASE.MYSTERY) return state
+
+      const timer = pauseRoundTimer(round.timer, action.now)
+      if (timer === round.timer) return state
+      return withActiveRound(state, action.now, round, { timer })
+    }
+
+    case ACTIONS.TICK_ROUND_TIMER: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+      const round = getActiveRound(state)
+      if (!round || round.phase !== ROUND_PHASE.MYSTERY) return state
+
+      const timer = tickRoundTimer(round.timer, action.now)
+      if (timer === round.timer) return state
+      return withActiveRound(state, action.now, round, { timer })
+    }
+
+    case ACTIONS.BEGIN_PREDICTIONS: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+      const round = getActiveRound(state)
+      if (!round || round.phase !== ROUND_PHASE.MYSTERY) return state
+
+      return withActiveRound(state, action.now, round, {
+        phase: ROUND_PHASE.PREDICTIONS,
+        timer: pauseRoundTimer(round.timer, action.now),
+      })
+    }
+
+    case ACTIONS.SUBMIT_PREDICTION: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+
+      const turn = getPredictionTurn(state)
+      if (!turn) return state
+      const target = state.players.find(
+        (player) => player.id === action.predictedAuthorId,
+      )
+      if (!target) return state
+
+      const round = getActiveRound(state)
+      if (!round || round.predictions.length >= state.players.length) {
+        return state
+      }
+
+      const predictions = [
+        ...round.predictions,
+        {
+          playerId: turn.player.id,
+          predictedAuthorId: target.id,
+          createdAt: action.now,
+        },
+      ]
+      const completed = predictions.length === state.players.length
+
+      return withActiveRound(state, action.now, round, {
+        predictions,
+        phase: completed ? ROUND_PHASE.GROUP : ROUND_PHASE.PREDICTIONS,
+      })
+    }
+
+    case ACTIONS.CONFIRM_GROUP_PREDICTION: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+      const round = getActiveRound(state)
+      if (!round || round.phase !== ROUND_PHASE.GROUP) return state
+      if (!arePredictionsComplete(state, round)) return state
+      if (round.groupPrediction) return state
+
+      const target = state.players.find(
+        (player) => player.id === action.predictedAuthorId,
+      )
+      if (!target) return state
+
+      const datum = state.data.find((item) => item.id === round.dataId)
+      if (!datum) return state
+
+      const { scores, playerResults } = scoreRound({
+        predictions: round.predictions,
+        scores: state.scores,
+        authorId: datum.authorId,
+      })
+
+      return withActiveRound(
+        state,
+        action.now,
+        round,
+        {
+          phase: ROUND_PHASE.REVEAL,
+          groupPrediction: {
+            predictedAuthorId: target.id,
+            confirmedAt: action.now,
+          },
+          result: {
+            authorId: datum.authorId,
+            revealedAt: action.now,
+            playerResults,
+            correctCount: playerResults.filter((entry) => entry.correct)
+              .length,
+            wrongCount: playerResults.filter((entry) => !entry.correct)
+              .length,
+            groupCorrect: target.id === datum.authorId,
+          },
+        },
+        { scores },
+      )
+    }
+
+    case ACTIONS.ADVANCE_ROUND: {
+      if (state.status !== GAME_STATUS.PLAYING) return state
+      const round = getActiveRound(state)
+      if (!round || round.phase !== ROUND_PHASE.REVEAL) return state
+
+      const nextIndex = state.currentRoundIndex + 1
+      if (nextIndex < state.rounds.length) {
+        return committed(state, action.now, { currentRoundIndex: nextIndex })
+      }
+
+      return committed(state, action.now, {
+        status: GAME_STATUS.FINISHED,
+        currentRoundIndex: state.rounds.length - 1,
+        finishedAt: action.now,
       })
     }
 

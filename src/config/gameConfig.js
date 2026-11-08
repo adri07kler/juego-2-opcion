@@ -13,6 +13,12 @@ export const GAME_CONFIG = Object.freeze({
     streakBonus: 5,
     streakEvery: 3,
   }),
+  roundTimer: Object.freeze({
+    min: 60,
+    max: 90,
+    default: 75,
+    step: 5,
+  }),
 })
 
 export const DATUM_CATEGORIES = Object.freeze([

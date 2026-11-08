@@ -43,7 +43,7 @@ const RULES = [
   `Entre ${minPlayers} y ${maxPlayers} participantes.`,
   'Cada persona registra entre 2 y 3 datos, sin vacíos ni repetidos.',
   'Una sola predicción por jugador y ronda: al confirmar queda bloqueada.',
-  'El autor de un dato recibe su turno, pero no vota en su propia ronda.',
+  'Todos los participantes votan en cada ronda; las predicciones quedan ocultas hasta el final.',
   'El equipo también fija una respuesta grupal que no puede modificarse.',
   'La partida termina cuando se han revelado todos los datos.',
 ]

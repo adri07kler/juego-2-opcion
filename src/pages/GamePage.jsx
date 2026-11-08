@@ -3,6 +3,7 @@ import { useGame } from '../game/useGame'
 import { NoGamePage } from './NoGamePage'
 import { ReadyPage } from './ReadyPage'
 import { RegistrationPage } from './RegistrationPage'
+import { ResultsPage } from './ResultsPage'
 import { StartedPage } from './StartedPage'
 import { TeamSetupPage } from './TeamSetupPage'
 
@@ -20,6 +21,8 @@ export function GamePage({ navigate }) {
       return <ReadyPage navigate={navigate} />
     case GAME_STATUS.PLAYING:
       return <StartedPage navigate={navigate} />
+    case GAME_STATUS.FINISHED:
+      return <ResultsPage navigate={navigate} />
     default:
       return <NoGamePage navigate={navigate} />
   }

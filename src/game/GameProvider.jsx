@@ -95,6 +95,38 @@ export function GameProvider({ children }) {
           deck: buildDeck(game.data).map((datum) => datum.id),
         })
       },
+
+      setRoundTimerDuration(seconds) {
+        run({ type: ACTIONS.SET_ROUND_TIMER_DURATION, seconds })
+      },
+
+      startRoundTimer() {
+        run({ type: ACTIONS.START_ROUND_TIMER })
+      },
+
+      pauseRoundTimer() {
+        run({ type: ACTIONS.PAUSE_ROUND_TIMER })
+      },
+
+      tickRoundTimer() {
+        run({ type: ACTIONS.TICK_ROUND_TIMER })
+      },
+
+      beginPredictions() {
+        run({ type: ACTIONS.BEGIN_PREDICTIONS })
+      },
+
+      submitPrediction(predictedAuthorId) {
+        run({ type: ACTIONS.SUBMIT_PREDICTION, predictedAuthorId })
+      },
+
+      confirmGroupPrediction(predictedAuthorId) {
+        run({ type: ACTIONS.CONFIRM_GROUP_PREDICTION, predictedAuthorId })
+      },
+
+      advanceRound() {
+        run({ type: ACTIONS.ADVANCE_ROUND })
+      },
     }),
     [run, game],
   )

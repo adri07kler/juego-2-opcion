@@ -5,9 +5,19 @@ export const GAME_STATUS = Object.freeze({
   REGISTRATION: 'registration',
   READY: 'ready',
   PLAYING: 'playing',
+  FINISHED: 'finished',
 })
 
 export const GAME_STATUS_VALUES = Object.freeze(Object.values(GAME_STATUS))
+
+export const ROUND_PHASE = Object.freeze({
+  MYSTERY: 'mystery',
+  PREDICTIONS: 'predictions',
+  GROUP: 'group',
+  REVEAL: 'reveal',
+})
+
+export const ROUND_PHASE_VALUES = Object.freeze(Object.values(ROUND_PHASE))
 
 export const ACTIONS = Object.freeze({
   NEW_GAME: 'NEW_GAME',
@@ -23,8 +33,20 @@ export const ACTIONS = Object.freeze({
   REMOVE_DRAFT_ENTRY: 'REMOVE_DRAFT_ENTRY',
   CONFIRM_REGISTRATION: 'CONFIRM_REGISTRATION',
   START_GAME: 'START_GAME',
+  SET_ROUND_TIMER_DURATION: 'SET_ROUND_TIMER_DURATION',
+  START_ROUND_TIMER: 'START_ROUND_TIMER',
+  PAUSE_ROUND_TIMER: 'PAUSE_ROUND_TIMER',
+  TICK_ROUND_TIMER: 'TICK_ROUND_TIMER',
+  BEGIN_PREDICTIONS: 'BEGIN_PREDICTIONS',
+  SUBMIT_PREDICTION: 'SUBMIT_PREDICTION',
+  CONFIRM_GROUP_PREDICTION: 'CONFIRM_GROUP_PREDICTION',
+  ADVANCE_ROUND: 'ADVANCE_ROUND',
 })
 
 export function isGameStatus(value) {
   return GAME_STATUS_VALUES.includes(value)
+}
+
+export function isRoundPhase(value) {
+  return ROUND_PHASE_VALUES.includes(value)
 }

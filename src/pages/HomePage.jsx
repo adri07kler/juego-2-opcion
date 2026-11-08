@@ -23,7 +23,9 @@ import { GAME_CONFIG } from '../config/gameConfig'
 import { GAME_STATUS } from '../game/constants'
 import {
   getGameStatusLabel,
+  getRanking,
   getRegistrationProgress,
+  getRoundProgress,
   getTotalData,
 } from '../game/selectors'
 import { useGame } from '../game/useGame'
@@ -78,9 +80,19 @@ function StorageNotice({ issue, onDismiss }) {
 
 function CurrentGameCard({ game, onContinue, onNewGame }) {
   const status = getGameStatusLabel(game)
-  const progress = game.status === GAME_STATUS.REGISTRATION
-    ? getRegistrationProgress(game)
-    : null
+  const progress =
+    game.status === GAME_STATUS.REGISTRATION
+      ? getRegistrationProgress(game)
+      : null
+  const roundProgress =
+    game.status === GAME_STATUS.PLAYING
+      ? getRoundProgress(game)
+      : null
+  const ranking =
+    game.status === GAME_STATUS.FINISHED ? getRanking(game) : []
+  const winners = ranking.filter(
+    (row) => row.points === ranking[0]?.points,
+  )
 
   return (
     <Card className="mt-10 p-5 text-left sm:p-6">
@@ -106,6 +118,15 @@ function CurrentGameCard({ game, onContinue, onNewGame }) {
               hint={`${progress.completed} de ${progress.total}`}
             />
           ) : null}
+          {roundProgress ? (
+            <Progress
+              className="mt-4 max-w-sm"
+              value={roundProgress.completed}
+              max={roundProgress.total}
+              label="Rondas completadas"
+              hint={`${roundProgress.completed} de ${roundProgress.total}`}
+            />
+          ) : null}
           {game.status === GAME_STATUS.READY ? (
             <p className="mt-2 text-xs text-mist-500">
               {getTotalData(game)} datos registrados y listos para jugar.
@@ -114,6 +135,13 @@ function CurrentGameCard({ game, onContinue, onNewGame }) {
           {game.status === GAME_STATUS.PLAYING ? (
             <p className="mt-2 text-xs text-mist-500">
               {getTotalData(game)} datos bloqueados · no se puede editar.
+            </p>
+          ) : null}
+          {game.status === GAME_STATUS.FINISHED ? (
+            <p className="mt-2 text-xs text-mist-500">
+              {winners.length > 1 ? 'Empate en el primer lugar: ' : 'Ganador: '}
+              {winners.map((winner) => winner.name).join(', ')} ·{' '}
+              {winners[0]?.points ?? 0} pts
             </p>
           ) : null}
         </div>

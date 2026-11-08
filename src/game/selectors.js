@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from '../config/gameConfig'
-import { GAME_STATUS } from './constants'
+import { GAME_STATUS, ROUND_PHASE } from './constants'
 import { createDraftEntries } from './factory'
 
 export function getPlayerData(game, playerId) {
@@ -8,6 +8,14 @@ export function getPlayerData(game, playerId) {
 
 export function getPlayerDataCount(game, playerId) {
   return getPlayerData(game, playerId).length
+}
+
+export function getPlayerById(game, playerId) {
+  return game?.players?.find((player) => player.id === playerId) ?? null
+}
+
+export function getDatumById(game, dataId) {
+  return game?.data?.find((datum) => datum.id === dataId) ?? null
 }
 
 export function isPlayerRegistered(game, playerId) {
@@ -74,6 +82,119 @@ export function canStartGame(game) {
   return game.status === GAME_STATUS.READY && getAllRegistered(game)
 }
 
+export function getCurrentRound(game) {
+  if (
+    !game ||
+    (game.status !== GAME_STATUS.PLAYING &&
+      game.status !== GAME_STATUS.FINISHED)
+  ) {
+    return null
+  }
+  return game.rounds?.[game.currentRoundIndex] ?? null
+}
+
+export function getRoundProgress(game) {
+  const total = game?.rounds?.length ?? 0
+  const index = total
+    ? Math.min((game.currentRoundIndex ?? 0) + 1, total)
+    : 0
+  const completed =
+    game?.rounds?.filter((round) => Boolean(round?.result)).length ?? 0
+  return {
+    index,
+    total,
+    completed,
+    percent: total > 0 ? Math.round((completed / total) * 100) : 0,
+  }
+}
+
+export function getPredictionTurn(game) {
+  const round = getCurrentRound(game)
+  if (
+    !game ||
+    game.status !== GAME_STATUS.PLAYING ||
+    !round ||
+    round.phase !== ROUND_PHASE.PREDICTIONS
+  ) {
+    return null
+  }
+
+  const predictedPlayerIds = new Set(
+    (round.predictions ?? []).map((prediction) => prediction.playerId),
+  )
+  const player = game.players.find(
+    (candidate) => !predictedPlayerIds.has(candidate.id),
+  )
+  if (!player) return null
+
+  return {
+    player,
+    position: predictedPlayerIds.size + 1,
+    total: game.players.length,
+    remaining: game.players.length - predictedPlayerIds.size,
+  }
+}
+
+export function arePredictionsComplete(game, round) {
+  if (!game || !round || !Array.isArray(round.predictions)) return false
+  if (round.predictions.length !== game.players.length) return false
+
+  const ids = new Set(round.predictions.map((prediction) => prediction.playerId))
+  return (
+    ids.size === game.players.length &&
+    game.players.every((player) => ids.has(player.id))
+  )
+}
+
+export function getRoundAuthor(game, round) {
+  const datum = getDatumById(game, round?.dataId)
+  if (!datum) return null
+  return getPlayerById(game, datum.authorId)
+}
+
+export function getGroupAnswerPlayer(game, round) {
+  return getPlayerById(game, round?.groupPrediction?.predictedAuthorId)
+}
+
+export function getScoreForPlayer(game, playerId) {
+  const score = game?.scores?.[playerId]
+  return {
+    points: score?.points ?? 0,
+    streak: score?.streak ?? 0,
+    correct: score?.correct ?? 0,
+    wrong: score?.wrong ?? 0,
+  }
+}
+
+/**
+ * Clasificación final por puntos. Quienes empatan comparten puesto y
+ * el siguiente puesto salta (1, 1, 3…).
+ */
+export function getRanking(game) {
+  const rows = (game?.players ?? [])
+    .map((player) => ({
+      playerId: player.id,
+      name: player.name,
+      ...getScoreForPlayer(game, player.id),
+    }))
+    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, 'es'))
+
+  let rank = 0
+  let previousPoints = null
+  const ranked = rows.map((row, index) => {
+    if (previousPoints === null || row.points !== previousPoints) {
+      rank = index + 1
+      previousPoints = row.points
+    }
+    return { ...row, rank }
+  })
+
+  return ranked.map((row) => ({
+    ...row,
+    tied: ranked.filter((other) => other.rank === row.rank).length > 1,
+  }))
+}
+
 export function getGameStatusLabel(game) {
   switch (game.status) {
     case GAME_STATUS.TEAM:
@@ -90,8 +211,18 @@ export function getGameStatusLabel(game) {
         label: 'Registro completo',
         detail: `${getTotalData(game)} datos listos para jugar`,
       }
-    case GAME_STATUS.PLAYING:
-      return { label: 'Partida iniciada', detail: 'Los datos están bloqueados' }
+    case GAME_STATUS.PLAYING: {
+      const progress = getRoundProgress(game)
+      return {
+        label: 'Partida en curso',
+        detail: `Ronda ${progress.index} de ${progress.total} · ${getTotalData(game)} datos`,
+      }
+    }
+    case GAME_STATUS.FINISHED:
+      return {
+        label: 'Partida finalizada',
+        detail: `${getTotalData(game)} datos revelados`,
+      }
     default:
       return { label: 'Partida', detail: '' }
   }
